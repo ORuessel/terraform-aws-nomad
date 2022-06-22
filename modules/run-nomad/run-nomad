@@ -156,10 +156,11 @@ EOF
     client_config=$(cat <<EOF
 client {
   enabled = true
-}
-options {
+    options {
         "docker.privileged.enabled" = "true"
     }
+}
+
 
 EOF
 )
