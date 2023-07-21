@@ -33,6 +33,8 @@ function print_usage {
   echo -e "  --environment\t\A single environment variable in the key/value pair form 'KEY=\"val\"' to pass to Nomad as environment variable when starting it up. Repeat this option for additional variables. Optional."
   echo -e "  --skip-nomad-config\tIf this flag is set, don't generate a Nomad configuration file. Optional. Default is false."
   echo -e "  --domain-name\t\tThe domain name for the statsd address in the telemetry configuration."
+  echo -e "  --driver-docker\tIf set, enable Docker driver. Optional. Default is false."
+  echo -e "  --driver-raw-exec\tIf set, enable raw_exec driver. Optional. Default is false."
   echo
   echo "Example:"
   echo
@@ -130,6 +132,8 @@ function generate_nomad_config {
   local readonly config_dir="$4"
   local readonly user="$5"
   local readonly domain_name="$6"
+  local readonly driver_docker="$7"
+  local readonly driver_raw_exec="$8"
   local readonly config_path="$config_dir/$NOMAD_CONFIG_FILE"
 
   local instance_id=""
@@ -151,6 +155,16 @@ server {
 }
 EOF
 )
+fi
+
+  local driver_docker_config=""
+  if [[ "$driver_docker" == "true" ]]; then
+    driver_docker_config='docker.privileged.enabled = "true"'
+  fi
+
+  local driver_raw_exec_config=""
+  if [[ "$driver_raw_exec" == "true" ]]; then
+    driver_raw_exec_config='driver.raw_exec.enable = "1"'
   fi
 
   local client_config=""
@@ -158,12 +172,11 @@ EOF
     client_config=$(cat <<EOF
 client {
   enabled = true
-    options {
-        "docker.privileged.enabled" = "true"
-    }
+  options {
+    $driver_docker_config
+    $driver_raw_exec_config
+  }
 }
-
-
 EOF
 )
   fi
@@ -299,6 +312,8 @@ function run {
   local environment=()
   local all_args=()
   local domain_name=""
+  local driver_docker="false"
+  local driver_raw_exec="false"
 
   while [[ $# > 0 ]]; do
     local key="$1"
@@ -365,10 +380,16 @@ function run {
         environment+=("$2")
         shift
         ;;
-       --domain-name)
+      --domain-name)
         assert_not_empty "$key" "$2"
         domain_name="$2"
         shift
+        ;;
+      --driver-docker)
+        driver_docker="true"
+        ;;
+      --driver-raw-exec)
+        driver_raw_exec="true"
         ;;
       --help)
         print_usage
@@ -427,7 +448,7 @@ function run {
   if [[ "$skip_nomad_config" == "true" ]]; then
     log_info "The --skip-nomad-config flag is set, so will not generate a default Nomad config file."
   else
-    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$domain_name"
+    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$domain_name" "$driver_docker" "$driver_raw_exec"
   fi
 
   generate_systemd_config "$SYSTEMD_CONFIG_PATH" "$config_dir" "$data_dir" "$bin_dir" "$systemd_stdout" "$systemd_stderr" "$user" "$use_sudo" "${environment[@]}"
