@@ -101,6 +101,12 @@ variable "termination_policies" {
   default     = "Default"
 }
 
+variable "suspended_processes" {
+  description = "A list of suspended process"
+  type        = list(string)
+  default     = []
+}
+
 variable "associate_public_ip_address" {
   description = "If set to true, associate a public IP address with each EC2 Instance in the cluster."
   type        = bool

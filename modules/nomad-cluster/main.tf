@@ -23,6 +23,7 @@ resource "aws_autoscaling_group" "autoscaling_group" {
   max_size             = var.max_size
   desired_capacity     = var.desired_capacity
   termination_policies = [var.termination_policies]
+  suspended_processes  = var.suspended_processes
 
   health_check_type         = var.health_check_type
   health_check_grace_period = var.health_check_grace_period
