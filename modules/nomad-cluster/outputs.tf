@@ -15,7 +15,7 @@ output "cluster_size" {
 }
 
 output "launch_config_name" {
-  value = aws_launch_configuration.launch_configuration.name
+  value = aws_launch_template.launch_template.name
 }
 
 output "iam_instance_profile_arn" {
