@@ -54,6 +54,18 @@ resource "aws_autoscaling_group" "autoscaling_group" {
     "WarmPoolWarmedCapacity"
   ]
 
+  tag {
+    key                 = "Name"
+    value               = var.cluster_name
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = var.cluster_tag_key
+    value               = var.cluster_tag_value
+    propagate_at_launch = true
+  }
+
   dynamic "tag" {
     for_each = var.tags
 
@@ -104,7 +116,7 @@ resource "aws_launch_template" "launch_template" {
       volume_size           = var.root_volume_size
       volume_type           = var.root_volume_type
       delete_on_termination = var.root_volume_delete_on_termination
-      encrypted             = true # Set this based on your requirement
+      encrypted             = var.root_volume_encryption
     }
   }
 

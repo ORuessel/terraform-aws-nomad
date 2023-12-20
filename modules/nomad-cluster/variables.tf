@@ -137,6 +137,13 @@ variable "root_volume_delete_on_termination" {
   type        = bool
 }
 
+variable "root_volume_encryption" {
+  description = "Whether the volume should be encrypted or not."
+  default     = true
+  type        = bool
+}
+
+
 variable "wait_for_capacity_timeout" {
   description = "A maximum duration that Terraform should wait for ASG instances to be healthy before timing out. Setting this to '0' causes Terraform to skip all Capacity Waiting behavior."
   type        = string
