@@ -109,6 +109,10 @@ resource "aws_launch_template" "launch_template" {
     ]
   }
 
+  placement {
+    tenancy = var.tenancy # Can be "default", "dedicated", or "host"
+  }
+  
   ebs_optimized = var.root_volume_ebs_optimized
 
   block_device_mappings {
