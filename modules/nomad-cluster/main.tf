@@ -74,10 +74,10 @@ resource "aws_autoscaling_group" "autoscaling_group" {
 # ---------------------------------------------------------------------------------------------------------------------
 
 resource "aws_launch_template" "launch_template" {
-  name_prefix   = "${var.cluster_name}-"
+  name_prefix   = var.cluster_name
   image_id      = var.ami_id
   instance_type = var.instance_type
-  user_data     = base64encode(var.user_data)
+  user_data     = var.user_data
 
   iam_instance_profile {
     name = aws_iam_instance_profile.instance_profile.name
@@ -133,31 +133,36 @@ resource "aws_launch_template" "launch_template" {
 # ---------------------------------------------------------------------------------------------------------------------
 
 resource "aws_security_group" "lc_security_group" {
-  name_prefix = "${var.cluster_name}-"
-  description = "Security group for the ${var.cluster_name} launch template"
+  name_prefix = var.cluster_name
+  description = "Security group for the ${var.cluster_name} launch configuration"
   vpc_id      = var.vpc_id
 
+  # aws_launch_configuration.launch_configuration in this module sets create_before_destroy to true, which means
+  # everything it depends on, including this resource, must set it as well, or you'll get cyclic dependency errors
+  # when you try to do a terraform destroy.
   lifecycle {
     create_before_destroy = true
   }
 }
 
 resource "aws_security_group_rule" "allow_ssh_inbound" {
-  count             = length(var.allowed_ssh_cidr_blocks) > 0 ? 1 : 0
-  type              = "ingress"
-  from_port         = var.ssh_port
-  to_port           = var.ssh_port
-  protocol          = "tcp"
-  cidr_blocks       = var.allowed_ssh_cidr_blocks
+  count       = length(var.allowed_ssh_cidr_blocks) > 0 ? 1 : 0
+  type        = "ingress"
+  from_port   = var.ssh_port
+  to_port     = var.ssh_port
+  protocol    = "tcp"
+  cidr_blocks = var.allowed_ssh_cidr_blocks
+
   security_group_id = aws_security_group.lc_security_group.id
 }
 
 resource "aws_security_group_rule" "allow_all_outbound" {
-  type              = "egress"
-  from_port         = 0
-  to_port           = 0
-  protocol          = "-1"
-  cidr_blocks       = var.allow_outbound_cidr_blocks
+  type        = "egress"
+  from_port   = 0
+  to_port     = 0
+  protocol    = "-1"
+  cidr_blocks = var.allow_outbound_cidr_blocks
+
   security_group_id = aws_security_group.lc_security_group.id
 }
 
@@ -178,24 +183,32 @@ module "security_group_rules" {
 
 # ---------------------------------------------------------------------------------------------------------------------
 # ATTACH AN IAM ROLE TO EACH EC2 INSTANCE
+# We can use the IAM role to grant the instance IAM permissions so we can use the AWS CLI without having to figure out
+# how to get our secret AWS access keys onto the box.
 # ---------------------------------------------------------------------------------------------------------------------
 
 resource "aws_iam_instance_profile" "instance_profile" {
-  name_prefix = "${var.cluster_name}-"
+  name_prefix = var.cluster_name
   path        = var.instance_profile_path
   role        = aws_iam_role.instance_role.name
 
+  # aws_launch_configuration.launch_configuration in this module sets create_before_destroy to true, which means
+  # everything it depends on, including this resource, must set it as well, or you'll get cyclic dependency errors
+  # when you try to do a terraform destroy.
   lifecycle {
     create_before_destroy = true
   }
 }
 
 resource "aws_iam_role" "instance_role" {
-  name_prefix        = "${var.cluster_name}-"
+  name_prefix        = var.cluster_name
   assume_role_policy = data.aws_iam_policy_document.instance_role.json
 
   permissions_boundary = var.iam_permissions_boundary
 
+  # aws_iam_instance_profile.instance_profile in this module sets create_before_destroy to true, which means
+  # everything it depends on, including this resource, must set it as well, or you'll get cyclic dependency errors
+  # when you try to do a terraform destroy.
   lifecycle {
     create_before_destroy = true
   }
