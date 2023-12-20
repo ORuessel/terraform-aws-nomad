@@ -98,10 +98,6 @@ resource "aws_launch_template" "launch_template" {
 
   key_name = var.ssh_key_name
 
-  vpc_security_group_ids = [
-    aws_security_group.lc_security_group.id
-  ]
-
   network_interfaces {
     associate_public_ip_address = var.associate_public_ip_address
     security_groups = [
