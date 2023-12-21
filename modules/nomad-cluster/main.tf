@@ -2,18 +2,18 @@
 # REQUIRE A SPECIFIC TERRAFORM VERSION OR HIGHER
 # ----------------------------------------------------------------------------------------------------------------------
 terraform {
-  # This module is now only being tested with Terraform 1.0.x. However, to make upgrading easier, we are setting
-  # 0.12.26 as the minimum version, as that version added support for required_providers with source URLs, making it
-  # forwards compatible with 1.0.x code.
   required_version = ">= 0.12.26"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
-# CREATE AN AUTO SCALING GROUP (ASG) TO RUN NOMAD
+# CREATE AN AUTO SCALING GROUP (ASG) TO RUN NOMAD USING LAUNCH TEMPLATE
 # ---------------------------------------------------------------------------------------------------------------------
 
 resource "aws_autoscaling_group" "autoscaling_group" {
-  launch_configuration = aws_launch_configuration.launch_configuration.name
+  launch_template {
+    id      = aws_launch_template.launch_template.id
+    version = "$Latest"
+  }
 
   name                = var.asg_name
   availability_zones  = var.availability_zones
@@ -23,12 +23,37 @@ resource "aws_autoscaling_group" "autoscaling_group" {
   max_size             = var.max_size
   desired_capacity     = var.desired_capacity
   termination_policies = [var.termination_policies]
+  suspended_processes  = var.suspended_processes
 
   health_check_type         = var.health_check_type
   health_check_grace_period = var.health_check_grace_period
   wait_for_capacity_timeout = var.wait_for_capacity_timeout
 
   protect_from_scale_in = var.protect_from_scale_in
+
+  enabled_metrics = [
+    "GroupAndWarmPoolDesiredCapacity",
+    "GroupAndWarmPoolTotalCapacity",
+    "GroupDesiredCapacity",
+    "GroupInServiceCapacity",
+    "GroupInServiceInstances",
+    "GroupMaxSize",
+    "GroupMinSize",
+    "GroupPendingCapacity",
+    "GroupPendingInstances",
+    "GroupStandbyCapacity",
+    "GroupStandbyInstances",
+    "GroupTerminatingCapacity",
+    "GroupTerminatingInstances",
+    "GroupTotalCapacity",
+    "GroupTotalInstances",
+    "WarmPoolDesiredCapacity",
+    "WarmPoolMinSize",
+    "WarmPoolPendingCapacity",
+    "WarmPoolTerminatingCapacity",
+    "WarmPoolTotalCapacity",
+    "WarmPoolWarmedCapacity"
+  ]
 
   tag {
     key                 = "Name"
@@ -53,66 +78,64 @@ resource "aws_autoscaling_group" "autoscaling_group" {
   }
 
   lifecycle {
-    # As of AWS Provider 3.x, inline load_balancers and target_group_arns
-    # in an aws_autoscaling_group take precedence over attachment resources.
-    # Since the consul-cluster module does not define any Load Balancers,
-    # it's safe to assume that we will always want to favor an attachment
-    # over these inline properties.
-    #
-    # For further discussion and links to relevant documentation, see
-    # https://github.com/hashicorp/terraform-aws-vault/issues/210
     ignore_changes = [load_balancers, target_group_arns]
   }
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
-# CREATE LAUNCH CONFIGURATION TO DEFINE WHAT RUNS ON EACH INSTANCE IN THE ASG
+# CREATE LAUNCH TEMPLATE TO DEFINE WHAT RUNS ON EACH INSTANCE IN THE ASG
 # ---------------------------------------------------------------------------------------------------------------------
 
-resource "aws_launch_configuration" "launch_configuration" {
-  name_prefix   = "${var.cluster_name}-"
+resource "aws_launch_template" "launch_template" {
+  name_prefix   = var.cluster_name
   image_id      = var.ami_id
   instance_type = var.instance_type
-  user_data     = var.user_data
+  user_data     = base64encode(var.user_data)
 
-  iam_instance_profile = aws_iam_instance_profile.instance_profile.name
-  key_name             = var.ssh_key_name
-
-  security_groups = concat(
-    [aws_security_group.lc_security_group.id],
-    var.security_groups,
-  )
-  placement_tenancy           = var.tenancy
-  associate_public_ip_address = var.associate_public_ip_address
-
-  ebs_optimized = var.root_volume_ebs_optimized
-
-  root_block_device {
-    volume_type           = var.root_volume_type
-    volume_size           = var.root_volume_size
-    delete_on_termination = var.root_volume_delete_on_termination
+  iam_instance_profile {
+    name = aws_iam_instance_profile.instance_profile.name
   }
 
-  dynamic "ebs_block_device" {
-    for_each = var.ebs_block_devices
+  key_name = var.ssh_key_name
 
-    content {
-      device_name           = ebs_block_device.value["device_name"]
-      volume_size           = ebs_block_device.value["volume_size"]
-      snapshot_id           = lookup(ebs_block_device.value, "snapshot_id", null)
-      iops                  = lookup(ebs_block_device.value, "iops", null)
-      encrypted             = lookup(ebs_block_device.value, "encrypted", null)
-      delete_on_termination = lookup(ebs_block_device.value, "delete_on_termination", null)
+  network_interfaces {
+    associate_public_ip_address = var.associate_public_ip_address
+    security_groups = [
+      aws_security_group.lc_security_group.id
+    ]
+  }
+
+  placement {
+    tenancy = var.tenancy # Can be "default", "dedicated", or "host"
+  }
+  
+  ebs_optimized = var.root_volume_ebs_optimized
+
+  block_device_mappings {
+    device_name = "/dev/sda1"
+    ebs {
+      volume_size           = var.root_volume_size
+      volume_type           = var.root_volume_type
+      delete_on_termination = var.root_volume_delete_on_termination
+      encrypted             = var.root_volume_encryption
     }
   }
 
-  # Important note: whenever using a launch configuration with an auto scaling group, you must set
-  # create_before_destroy = true. However, as soon as you set create_before_destroy = true in one resource, you must
-  # also set it in every resource that it depends on, or you'll get an error about cyclic dependencies (especially when
-  # removing resources). For more info, see:
-  #
-  # https://www.terraform.io/docs/providers/aws/r/launch_configuration.html
-  # https://terraform.io/docs/configuration/resources.html
+  dynamic "block_device_mappings" {
+    for_each = var.ebs_block_devices
+
+    content {
+      device_name = block_device_mappings.value["device_name"]
+      ebs {
+        volume_size           = block_device_mappings.value["volume_size"]
+        snapshot_id           = lookup(block_device_mappings.value, "snapshot_id", null)
+        iops                  = lookup(block_device_mappings.value, "iops", null)
+        encrypted             = lookup(block_device_mappings.value, "encrypted", null)
+        delete_on_termination = lookup(block_device_mappings.value, "delete_on_termination", null)
+      }
+    }
+  }
+
   lifecycle {
     create_before_destroy = true
   }

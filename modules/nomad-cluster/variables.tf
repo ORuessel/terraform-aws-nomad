@@ -101,6 +101,12 @@ variable "termination_policies" {
   default     = "Default"
 }
 
+variable "suspended_processes" {
+  description = "A list of suspended process"
+  type        = list(string)
+  default     = []
+}
+
 variable "associate_public_ip_address" {
   description = "If set to true, associate a public IP address with each EC2 Instance in the cluster."
   type        = bool
@@ -136,6 +142,13 @@ variable "root_volume_delete_on_termination" {
   default     = true
   type        = bool
 }
+
+variable "root_volume_encryption" {
+  description = "Whether the volume should be encrypted or not."
+  default     = true
+  type        = bool
+}
+
 
 variable "wait_for_capacity_timeout" {
   description = "A maximum duration that Terraform should wait for ASG instances to be healthy before timing out. Setting this to '0' causes Terraform to skip all Capacity Waiting behavior."
