@@ -149,7 +149,11 @@ variable "root_volume_encryption" {
   type        = bool
 }
 
-
+variable "enabled_metrics" {
+  description = "List of autoscaling group metrics to enable."
+  type        = list(string)
+  default     = []
+}
 variable "wait_for_capacity_timeout" {
   description = "A maximum duration that Terraform should wait for ASG instances to be healthy before timing out. Setting this to '0' causes Terraform to skip all Capacity Waiting behavior."
   type        = string
