@@ -77,6 +77,12 @@ variable "ssh_key_name" {
   default     = ""
 }
 
+variable "root_volume_kms_key_id" {
+  description = "The name of the kms key which would used for customer managed key"
+  type        = string
+  default     = ""
+}
+
 variable "allowed_ssh_cidr_blocks" {
   description = "A list of CIDR-formatted IP address ranges from which the EC2 Instances will allow SSH connections"
   type        = list(string)
