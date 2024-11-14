@@ -172,6 +172,9 @@ fi
     client_config=$(cat <<EOF
 client {
   enabled = true
+  template {
+    disable_file_sandbox = true
+  }
   options {
     $driver_docker_config
     $driver_raw_exec_config
