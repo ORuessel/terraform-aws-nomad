@@ -80,11 +80,13 @@ The `run-nomad` script accepts the following arguments:
   root-level privileges).
 * `skip-nomad-config`: If this flag is set, don't generate a Nomad configuration file. This is useful if you have
   a custom configuration file and don't want to use any of of the default settings from `run-nomad`.
+* `federation-join` (optional): A comma-separated list of Nomad server addresses for federation join. This is only
+  applicable if you are running Nomad Enterprise.
 
 Example:
 
 ```
-/opt/nomad/bin/run-nomad --server --num-servers 3
+/opt/nomad/bin/run-nomad --server --num-servers 3 --join "server1.example.com,server2.example.com" --federation-join "federation-server1.example.com,federation-server2.example.com"
 ```
 
 
@@ -215,3 +217,30 @@ Note that Nomad relies on Consul, and enabling encryption for Consul requires a 
 [How do you handle encryption
 docs](https://github.com/hashicorp/terraform-aws-consul/tree/master/modules/run-consul#how-do-you-handle-encryption)
 for more info.
+
+## Federation Join (Enterprise)
+
+The script now supports the `--federation-join` argument for Nomad Federation (Enterprise):
+
+- Use `--join` for direct join (global cluster, open source or enterprise)
+- Use `--federation-join` for federation join (Enterprise only)
+- Both can be used together; the script will write both a `retry_join` block and a `server_join` block in the Nomad config
+
+**Example:**
+```
+/opt/nomad/bin/run-nomad --server --num-servers 3 --join "server1.example.com,server2.example.com" --federation-join "federation-server1.example.com,federation-server2.example.com"
+```
+
+**Resulting config:**
+```hcl
+retry_join = ["server1.example.com", "server2.example.com"]
+
+server_join {
+  retry_join = ["federation-server1.example.com", "federation-server2.example.com"]
+}
+```
+
+- If only `--join` is set, only direct join is used (default for open source)
+- If `--federation-join` is set, federation join is enabled (Nomad Enterprise required)
+
+See the Multi-Region Implementation Plan for more details.

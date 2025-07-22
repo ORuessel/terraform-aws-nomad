@@ -35,6 +35,8 @@ function print_usage {
   echo -e "  --domain-name\t\tThe domain name for the statsd address in the telemetry configuration."
   echo -e "  --driver-docker\tIf set, enable Docker driver. Optional. Default is false."
   echo -e "  --driver-raw-exec\tIf set, enable raw_exec driver. Optional. Default is false."
+  echo -e "  --join\t\tA comma-separated list of Nomad server addresses (IP or DNS) to join for a global cluster. Optional."
+  echo -e "  --federation-join\tA comma-separated list of Nomad server addresses (IP or DNS) to join for a federation cluster. Optional."
   echo
   echo "Example:"
   echo
@@ -134,6 +136,7 @@ function generate_nomad_config {
   local readonly domain_name="$6"
   local readonly driver_docker="$7"
   local readonly driver_raw_exec="$8"
+  local readonly join_servers="$9"
   local readonly config_path="$config_dir/$NOMAD_CONFIG_FILE"
 
   local instance_id=""
@@ -196,6 +199,30 @@ telemetry {
 EOF
 )
 
+  local join_config=""
+  if [[ -n "$join_servers" ]]; then
+    # Convert comma-separated string to HCL array
+    IFS=',' read -ra ADDR <<< "$join_servers"
+    join_config="retry_join = ["
+    for i in "${ADDR[@]}"; do
+      join_config+=" \"$i\"," 
+    done
+    join_config=${join_config%,}
+    join_config+=" ]"
+  fi
+
+  local federation_join_config=""
+  if [[ -n "$federation_join_servers" ]]; then
+    # Convert comma-separated string to HCL array
+    IFS=',' read -ra FEDADDR <<< "$federation_join_servers"
+    federation_join_config="server_join {\n  retry_join = ["
+    for i in "${FEDADDR[@]}"; do
+      federation_join_config+=" \"$i\"," 
+    done
+    federation_join_config=${federation_join_config%,}
+    federation_join_config+=" ]\n}"
+  fi
+
   log_info "Creating default Nomad config file in $config_path"
   cat > "$config_path" <<EOF
 datacenter = "$availability_zone"
@@ -214,6 +241,10 @@ $client_config
 $server_config
 
 $telemetry_config
+
+$join_config
+
+$federation_join_config
 
 consul {
   address = "127.0.0.1:8500"
@@ -317,6 +348,8 @@ function run {
   local domain_name=""
   local driver_docker="false"
   local driver_raw_exec="false"
+  local join_servers=""
+  local federation_join_servers=""
 
   while [[ $# > 0 ]]; do
     local key="$1"
@@ -394,6 +427,16 @@ function run {
       --driver-raw-exec)
         driver_raw_exec="true"
         ;;
+      --join)
+        assert_not_empty "$key" "$2"
+        join_servers="$2"
+        shift
+        ;;
+      --federation-join)
+        assert_not_empty "$key" "$2"
+        federation_join_servers="$2"
+        shift
+        ;;
       --help)
         print_usage
         exit
@@ -451,7 +494,7 @@ function run {
   if [[ "$skip_nomad_config" == "true" ]]; then
     log_info "The --skip-nomad-config flag is set, so will not generate a default Nomad config file."
   else
-    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$domain_name" "$driver_docker" "$driver_raw_exec"
+    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$domain_name" "$driver_docker" "$driver_raw_exec" "$join_servers" "$federation_join_servers"
   fi
 
   generate_systemd_config "$SYSTEMD_CONFIG_PATH" "$config_dir" "$data_dir" "$bin_dir" "$systemd_stdout" "$systemd_stderr" "$user" "$use_sudo" "${environment[@]}"

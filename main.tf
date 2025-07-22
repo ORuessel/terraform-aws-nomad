@@ -90,6 +90,8 @@ module "servers" {
       propagate_at_launch = true
     },
   ]
+
+  join_servers = var.join_servers
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -123,6 +125,7 @@ data "template_file" "user_data_server" {
     cluster_tag_key   = var.cluster_tag_key
     cluster_tag_value = var.cluster_tag_value
     num_servers       = var.num_servers
+    join_servers      = var.join_servers
   }
 }
 
@@ -170,6 +173,8 @@ module "clients" {
       propagate_at_launch = true
     }
   ]
+
+  join_servers = var.join_servers
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -195,6 +200,7 @@ data "template_file" "user_data_client" {
   vars = {
     cluster_tag_key   = var.cluster_tag_key
     cluster_tag_value = var.cluster_tag_value
+    join_servers      = var.join_servers
   }
 }
 

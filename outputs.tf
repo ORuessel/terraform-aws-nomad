@@ -58,3 +58,8 @@ output "nomad_servers_cluster_tag_value" {
   value = module.servers.cluster_tag_value
 }
 
+output "join_servers" {
+  description = "Die für den Cluster verwendete Join-Liste (Multi-Region Support)."
+  value       = var.join_servers
+}
+

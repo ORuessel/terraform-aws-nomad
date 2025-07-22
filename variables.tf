@@ -79,3 +79,20 @@ variable "vpc_id" {
   default     = ""
 }
 
+# ---------------------------------------------------------------------------------------------------------------------
+# GLOBAL CLUSTER JOIN SERVERS (Direct Join)
+# ---------------------------------------------------------------------------------------------------------------------
+#
+# join_servers ermöglicht Multi-Region-Setups (globaler Cluster ohne Federation).
+# - Für Single-Region: nur Server der eigenen Region eintragen (Standard, rückwärtskompatibel)
+# - Für Multi-Region: alle relevanten Server (DNS oder IP) aus allen Regionen eintragen
+# - Bleibt die Liste leer, bleibt das Verhalten wie bisher (Single-Region)
+#
+# Siehe auch README und MULTIREGION-IMPLEMENTATION-PLAN.md
+
+variable "join_servers" {
+  description = "List of all Consul/Nomad server addresses (DNS or IP) to join for a global cluster across regions."
+  type        = list(string)
+  default     = []
+}
+

@@ -122,3 +122,33 @@ Please see [LICENSE](https://github.com/hashicorp/terraform-aws-nomad/tree/maste
 
 
 Copyright &copy; 2019 Gruntwork, Inc.
+
+## Multi-Region Support (`join_servers`)
+
+Dieses Modul unterstützt Multi-Region-Setups über die Variable `join_servers`. Damit können Sie einen globalen Consul/Nomad-Cluster über mehrere AWS-Regionen hinweg betreiben (Direct Join, keine Federation).
+
+- **Single-Region:** Die Join-Liste enthält nur die Server der eigenen Region (Standard, rückwärtskompatibel).
+- **Multi-Region:** Die Join-Liste enthält alle relevanten Server (DNS oder IP) aus allen Regionen.
+
+**Beispiel für tfvars (Single-Region):**
+```hcl
+join_servers = [
+  "consul-nomad-1.eu-central-1.example.com",
+  "consul-nomad-2.eu-central-1.example.com"
+]
+```
+
+**Beispiel für tfvars (Multi-Region):**
+```hcl
+join_servers = [
+  "consul-nomad-1.eu-central-1.example.com",
+  "consul-nomad-2.eu-central-1.example.com",
+  "consul-nomad-1.eu-west-1.example.com",
+  "consul-nomad-2.eu-west-1.example.com"
+]
+```
+
+**Rückwärtskompatibilität:**  
+Wenn `join_servers` leer bleibt oder nur Server aus einer Region enthält, verhält sich das Deployment wie bisher (Single-Region). Bestehende Deployments funktionieren ohne Anpassung weiter.
+
+Weitere Details und Best Practices siehe [MULTIREGION-IMPLEMENTATION-PLAN.md](./MULTIREGION-IMPLEMENTATION-PLAN.md).

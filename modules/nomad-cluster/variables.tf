@@ -262,3 +262,13 @@ variable "iam_permissions_boundary" {
   type        = string
   default     = null
 }
+
+# ---------------------------------------------------------------------------------------------------------------------
+# GLOBAL CLUSTER JOIN SERVERS (Direct Join)
+# ---------------------------------------------------------------------------------------------------------------------
+
+variable "join_servers" {
+  description = "List of all Nomad server addresses (DNS or IP) to join for a global cluster across regions."
+  type        = list(string)
+  default     = []
+}
