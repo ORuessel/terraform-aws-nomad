@@ -32,6 +32,7 @@ function print_usage {
   echo -e "  --use-sudo\t\tIf set, run the Nomad agent with sudo. By default, sudo is only used if --client is set."
   echo -e "  --environment\t\A single environment variable in the key/value pair form 'KEY=\"val\"' to pass to Nomad as environment variable when starting it up. Repeat this option for additional variables. Optional."
   echo -e "  --skip-nomad-config\tIf this flag is set, don't generate a Nomad configuration file. Optional. Default is false."
+  echo -e "  --datacenter\t\tThe datacenter name for Nomad. Optional. If not specified, defaults to AWS availability zone."
   echo -e "  --domain-name\t\tThe domain name for the statsd address in the telemetry configuration."
   echo -e "  --driver-docker\tIf set, enable Docker driver. Optional. Default is false."
   echo -e "  --driver-raw-exec\tIf set, enable raw_exec driver. Optional. Default is false."
@@ -138,6 +139,7 @@ function generate_nomad_config {
   local readonly driver_raw_exec="$8"
   local readonly join_servers="$9"
   local readonly federation_join_servers="${10}"
+  local readonly custom_datacenter="${11}"
   local readonly config_path="$config_dir/$NOMAD_CONFIG_FILE"
 
   local instance_id=""
@@ -154,7 +156,17 @@ function generate_nomad_config {
 
   # Multi-Region Direct Join: Use global region but keep AZ datacenter for backwards compatibility
   # Single-Region: Use AWS region/AZ as before
-  if [[ -n "$join_servers" ]]; then
+  if [[ -n "$custom_datacenter" ]]; then
+    # Use explicitly provided datacenter
+    nomad_datacenter="$custom_datacenter"
+    if [[ -n "$join_servers" ]]; then
+      nomad_region="global"
+      log_info "Multi-Region Direct Join with custom datacenter: Setting Nomad region to 'global' and datacenter to '$nomad_datacenter'"
+    else
+      nomad_region="$instance_region"
+      log_info "Single-region cluster with custom datacenter: Using AWS region '$nomad_region' and datacenter '$nomad_datacenter'"
+    fi
+  elif [[ -n "$join_servers" ]]; then
     nomad_region="global"
     nomad_datacenter="$availability_zone"  # Keep AZ for backwards compatibility with existing jobs
     log_info "Multi-Region Direct Join detected: Setting Nomad region to 'global' and datacenter to '$nomad_datacenter' (AZ for job compatibility)"
@@ -221,32 +233,31 @@ EOF
 )
 
   local join_config=""
+  local all_servers=()
+  
+  # Collect all join servers
   if [[ -n "$join_servers" ]]; then
-    # Convert comma-separated string to HCL array
     IFS=',' read -ra ADDR <<< "$join_servers"
-    join_config="retry_join = ["
-    for i in "${ADDR[@]}"; do
+    all_servers+=("${ADDR[@]}")
+  fi
+  
+  # Collect all federation join servers  
+  if [[ -n "$federation_join_servers" ]]; then
+    IFS=',' read -ra FEDADDR <<< "$federation_join_servers"
+    all_servers+=("${FEDADDR[@]}")
+  fi
+  
+  # Generate single server_join block if any servers specified
+  if [[ ${#all_servers[@]} -gt 0 ]]; then
+    join_config="server_join {"$'\n'"  retry_join = ["
+    for i in "${all_servers[@]}"; do
       join_config+=" \"$i\"," 
     done
     join_config=${join_config%,}
-    join_config+=" ]"
+    join_config+=" ]"$'\n'"}"
   fi
 
   local federation_join_config=""
-  if [[ -n "$federation_join_servers" ]]; then
-    # Convert comma-separated string to HCL array
-    IFS=',' read -ra FEDADDR <<< "$federation_join_servers"
-    federation_join_config=$(cat <<EOF
-server_join {
-  retry_join = [
-EOF
-)
-    for i in "${FEDADDR[@]}"; do
-      federation_join_config+="    \"$i\","$'\n'
-    done
-    federation_join_config=${federation_join_config%,$'\n'}$'\n'
-    federation_join_config+="  ]"$'\n'"}"
-  fi
 
   log_info "Creating default Nomad config file in $config_path"
   cat > "$config_path" <<EOF
@@ -370,6 +381,7 @@ function run {
   local use_sudo=""
   local environment=()
   local all_args=()
+  local datacenter=""
   local domain_name=""
   local driver_docker="false"
   local driver_raw_exec="false"
@@ -439,6 +451,11 @@ function run {
       --environment)
         assert_not_empty "$key" "$2"
         environment+=("$2")
+        shift
+        ;;
+      --datacenter)
+        assert_not_empty "$key" "$2"
+        datacenter="$2"
         shift
         ;;
       --domain-name)
@@ -519,7 +536,7 @@ function run {
   if [[ "$skip_nomad_config" == "true" ]]; then
     log_info "The --skip-nomad-config flag is set, so will not generate a default Nomad config file."
   else
-    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$domain_name" "$driver_docker" "$driver_raw_exec" "$join_servers" "$federation_join_servers"
+    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$domain_name" "$driver_docker" "$driver_raw_exec" "$join_servers" "$federation_join_servers" "$datacenter"
   fi
 
   generate_systemd_config "$SYSTEMD_CONFIG_PATH" "$config_dir" "$data_dir" "$bin_dir" "$systemd_stdout" "$systemd_stderr" "$user" "$use_sudo" "${environment[@]}"
