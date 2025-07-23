@@ -83,10 +83,20 @@ The `run-nomad` script accepts the following arguments:
 * `federation-join` (optional): A comma-separated list of Nomad server addresses for federation join. This is only
   applicable if you are running Nomad Enterprise.
 
-Example:
+Examples:
 
 ```
-/opt/nomad/bin/run-nomad --server --num-servers 3 --join "server1.example.com,server2.example.com" --federation-join "federation-server1.example.com,federation-server2.example.com"
+# Single-region cluster
+/opt/nomad/bin/run-nomad --server --num-servers 3
+
+# Multi-region cluster (Direct Join) - region/datacenter automatically set to "global"
+/opt/nomad/bin/run-nomad --server --num-servers 6 --join "server1.eu-central-1.example.com,server2.eu-central-1.example.com,server1.eu-west-2.example.com,server2.eu-west-2.example.com"
+
+# Federation (Enterprise) - each region keeps its own region/datacenter
+/opt/nomad/bin/run-nomad --server --num-servers 3 --federation-join "federation-server1.example.com,federation-server2.example.com"
+
+# Combined Direct Join + Federation
+/opt/nomad/bin/run-nomad --server --num-servers 6 --join "server1.example.com,server2.example.com" --federation-join "federation-server1.example.com,federation-server2.example.com"
 ```
 
 
@@ -118,15 +128,16 @@ available.
 * [consul](https://www.nomadproject.io/docs/agent/configuration/consul.html): By default, set the Consul address to
   `127.0.0.1:8500`, with the assumption that the Consul agent is running on the same server.
 
-* [datacenter](https://www.nomadproject.io/docs/agent/configuration/index.html#datacenter): Set to the current
-  availability zone, as fetched from
-  [Metadata](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html).
+* [datacenter](https://www.nomadproject.io/docs/agent/configuration/index.html#datacenter): 
+    * **Multi-Region Direct Join:** If `--join` is used, set to AWS Availability Zone (e.g. `"eu-central-1a"`) for backwards compatibility with existing jobs. Additional node metadata provides region-level control.
+    * **Single-Region:** Set to the current availability zone, as fetched from [Metadata](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html).
 
 * [name](https://www.nomadproject.io/docs/agent/configuration/index.html#name): Set to the instance id, as fetched from
   [Metadata](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html).     
 
-* [region](https://www.nomadproject.io/docs/agent/configuration/index.html#region): Set to the current AWS region, as
-  fetched from [Metadata](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html).
+* [region](https://www.nomadproject.io/docs/agent/configuration/index.html#region): 
+    * **Multi-Region Direct Join:** If `--join` is used, automatically set to `"global"` for all servers across all regions to enable clustering.
+    * **Single-Region:** Set to the current AWS region (e.g. `us-east-1`), as fetched from [Metadata](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html).
 
 * [server](https://www.nomadproject.io/docs/agent/configuration/server.html): This config is only set if `--server` is
   set.
@@ -134,6 +145,80 @@ available.
     * [enabled](https://www.nomadproject.io/docs/agent/configuration/server.html#enabled): `true`.
     * [bootstrap_expect](https://www.nomadproject.io/docs/agent/configuration/server.html#bootstrap_expect): Set to the
       `--num-servers` parameter.
+
+## Multi-Region Job Scheduling (Community Edition)
+
+For **Community Edition Multi-Region Direct Join**, Nomad uses a backwards-compatible approach:
+
+- **Region:** Set to `"global"` for clustering (all servers can communicate)
+- **Datacenter:** Set to AWS Availability Zone (e.g. `"eu-central-1a"`, `"eu-west-2b"`) for backwards compatibility
+- **Node Meta:** Additional metadata `aws_region` and `aws_az` for advanced job constraints
+
+### Job Placement Options:
+
+#### 1. **Backwards Compatible** (existing jobs work unchanged):
+```hcl
+job "web-app" {
+  region = "global"
+  datacenters = ["eu-central-1a", "eu-west-2a"]  # Specific AZs
+}
+```
+
+#### 2. **Region-Based** (using node metadata):
+```hcl
+job "web-app" {
+  region = "global"
+  datacenters = ["eu-central-1a", "eu-central-1b", "eu-west-2a", "eu-west-2b"]
+  
+  group "web" {
+    # Only run in eu-central-1 region (any AZ)
+    constraint {
+      attribute = "${meta.aws_region}"
+      operator  = "="
+      value     = "eu-central-1"
+    }
+  }
+}
+```
+
+#### 3. **Cross-Region High Availability**:
+```hcl
+job "web-app" {
+  region = "global"
+  datacenters = ["eu-central-1a", "eu-west-2a"]
+  
+  group "web" {
+    count = 2  # Run in both regions
+    
+    constraint {
+      attribute = "${meta.aws_region}"
+      operator  = "distinct_property"
+      value     = "eu-central-1,eu-west-2"
+    }
+  }
+}
+```
+
+#### 4. **Specific AZ Targeting**:
+```hcl
+job "web-app" {
+  region = "global"
+  datacenters = ["eu-central-1a", "eu-central-1b"]
+  
+  group "web" {
+    constraint {
+      attribute = "${meta.aws_az}"
+      operator  = "="
+      value     = "eu-central-1a"  # Only this specific AZ
+    }
+  }
+}
+```
+
+### Node Metadata Available:
+- `${meta.aws_region}` - AWS Region (e.g. "eu-central-1")
+- `${meta.aws_az}` - AWS Availability Zone (e.g. "eu-central-1a")
+- `${node.datacenter}` - Nomad datacenter (equals AZ for backwards compatibility)
 
 
 ### Overriding the configuration

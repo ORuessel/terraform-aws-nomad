@@ -144,11 +144,25 @@ function generate_nomad_config {
   local instance_ip_address=""
   local instance_region=""
   local instance_availability_zone=""
+  local nomad_region=""
+  local nomad_datacenter=""
 
   instance_id=$(get_instance_id)
   instance_ip_address=$(get_instance_ip_address)
   instance_region=$(get_instance_region)
   availability_zone=$(get_instance_availability_zone)
+
+  # Multi-Region Direct Join: Use global region but keep AZ datacenter for backwards compatibility
+  # Single-Region: Use AWS region/AZ as before
+  if [[ -n "$join_servers" ]]; then
+    nomad_region="global"
+    nomad_datacenter="$availability_zone"  # Keep AZ for backwards compatibility with existing jobs
+    log_info "Multi-Region Direct Join detected: Setting Nomad region to 'global' and datacenter to '$nomad_datacenter' (AZ for job compatibility)"
+  else
+    nomad_region="$instance_region"
+    nomad_datacenter="$availability_zone"
+    log_info "Single-region cluster: Using AWS region '$nomad_region' and AZ '$nomad_datacenter'"
+  fi
 
   local server_config=""
   if [[ "$server" == "true" ]]; then
@@ -173,6 +187,11 @@ fi
 
   local client_config=""
   if [[ "$client" == "true" ]]; then
+    local client_meta=""
+    if [[ -n "$join_servers" ]]; then
+      client_meta="  meta {\n    aws_region = \"$instance_region\"\n    aws_az = \"$availability_zone\"\n  }"
+    fi
+    
     client_config=$(cat <<EOF
 client {
   enabled = true
@@ -183,6 +202,7 @@ client {
     $driver_docker_config
     $driver_raw_exec_config
   }
+$client_meta
 }
 EOF
 )
@@ -230,9 +250,9 @@ EOF
 
   log_info "Creating default Nomad config file in $config_path"
   cat > "$config_path" <<EOF
-datacenter = "$availability_zone"
+datacenter = "$nomad_datacenter"
 name       = "$instance_id"
-region     = "$instance_region"
+region     = "$nomad_region"
 bind_addr  = "0.0.0.0"
 
 advertise {
