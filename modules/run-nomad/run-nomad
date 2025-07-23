@@ -137,6 +137,7 @@ function generate_nomad_config {
   local readonly driver_docker="$7"
   local readonly driver_raw_exec="$8"
   local readonly join_servers="$9"
+  local readonly federation_join_servers="${10}"
   local readonly config_path="$config_dir/$NOMAD_CONFIG_FILE"
 
   local instance_id=""
@@ -215,12 +216,16 @@ EOF
   if [[ -n "$federation_join_servers" ]]; then
     # Convert comma-separated string to HCL array
     IFS=',' read -ra FEDADDR <<< "$federation_join_servers"
-    federation_join_config="server_join {\n  retry_join = ["
+    federation_join_config=$(cat <<EOF
+server_join {
+  retry_join = [
+EOF
+)
     for i in "${FEDADDR[@]}"; do
-      federation_join_config+=" \"$i\"," 
+      federation_join_config+="    \"$i\","$'\n'
     done
-    federation_join_config=${federation_join_config%,}
-    federation_join_config+=" ]\n}"
+    federation_join_config=${federation_join_config%,$'\n'}$'\n'
+    federation_join_config+="  ]"$'\n'"}"
   fi
 
   log_info "Creating default Nomad config file in $config_path"
