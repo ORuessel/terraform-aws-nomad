@@ -33,6 +33,7 @@ function print_usage {
   echo -e "  --environment\t\A single environment variable in the key/value pair form 'KEY=\"val\"' to pass to Nomad as environment variable when starting it up. Repeat this option for additional variables. Optional."
   echo -e "  --skip-nomad-config\tIf this flag is set, don't generate a Nomad configuration file. Optional. Default is false."
   echo -e "  --datacenter\t\tThe datacenter name for Nomad. Optional. If not specified, defaults to AWS availability zone."
+  echo -e "  --region\t\tThe region name for Nomad. Optional. If not specified, uses 'global' for multi-region or AWS region for single-region."
   echo -e "  --domain-name\t\tThe domain name for the statsd address in the telemetry configuration."
   echo -e "  --driver-docker\tIf set, enable Docker driver. Optional. Default is false."
   echo -e "  --driver-raw-exec\tIf set, enable raw_exec driver. Optional. Default is false."
@@ -140,6 +141,7 @@ function generate_nomad_config {
   local readonly join_servers="$9"
   local readonly federation_join_servers="${10}"
   local readonly custom_datacenter="${11}"
+  local readonly custom_region="${12}"
   local readonly config_path="$config_dir/$NOMAD_CONFIG_FILE"
 
   local instance_id=""
@@ -154,9 +156,18 @@ function generate_nomad_config {
   instance_region=$(get_instance_region)
   availability_zone=$(get_instance_availability_zone)
 
-  # Multi-Region Direct Join: Use global region but keep AZ datacenter for backwards compatibility
-  # Single-Region: Use AWS region/AZ as before
-  if [[ -n "$custom_datacenter" ]]; then
+  # Multi-Region Logic with explicit region support for backward compatibility
+  # Priority: 1) explicit --region, 2) auto-detection based on --join presence  
+  if [[ -n "$custom_region" ]]; then
+    # Explicit region provided - use it (for backward compatibility)
+    nomad_region="$custom_region"
+    if [[ -n "$custom_datacenter" ]]; then
+      nomad_datacenter="$custom_datacenter"
+    else
+      nomad_datacenter="$availability_zone"  # Default to AZ
+    fi
+    log_info "Explicit region specified: Using Nomad region '$nomad_region' and datacenter '$nomad_datacenter'"
+  elif [[ -n "$custom_datacenter" ]]; then
     # Use explicitly provided datacenter
     nomad_datacenter="$custom_datacenter"
     if [[ -n "$join_servers" ]]; then
@@ -382,6 +393,7 @@ function run {
   local environment=()
   local all_args=()
   local datacenter=""
+  local region=""
   local domain_name=""
   local driver_docker="false"
   local driver_raw_exec="false"
@@ -456,6 +468,11 @@ function run {
       --datacenter)
         assert_not_empty "$key" "$2"
         datacenter="$2"
+        shift
+        ;;
+      --region)
+        assert_not_empty "$key" "$2"
+        region="$2"
         shift
         ;;
       --domain-name)
@@ -536,7 +553,7 @@ function run {
   if [[ "$skip_nomad_config" == "true" ]]; then
     log_info "The --skip-nomad-config flag is set, so will not generate a default Nomad config file."
   else
-    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$domain_name" "$driver_docker" "$driver_raw_exec" "$join_servers" "$federation_join_servers" "$datacenter"
+    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$domain_name" "$driver_docker" "$driver_raw_exec" "$join_servers" "$federation_join_servers" "$datacenter" "$region"
   fi
 
   generate_systemd_config "$SYSTEMD_CONFIG_PATH" "$config_dir" "$data_dir" "$bin_dir" "$systemd_stdout" "$systemd_stderr" "$user" "$use_sudo" "${environment[@]}"
